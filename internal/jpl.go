@@ -63,7 +63,7 @@ func ascendant(ramcDeg, latDeg float64) float64 {
 	return math.Mod(ascDeg+360, 360)
 }
 
-func (person Person) GetPlanetryPosition() {
+func (person Person) GetPlanetryPosition() Chart {
 	tz := time.FixedZone("Local", person.TZOffset)
 	localTime := time.Date(person.Year, time.Month(person.Month), person.Day,
 		person.Hour, person.Minute, person.Second, 0, tz)
@@ -87,6 +87,16 @@ func (person Person) GetPlanetryPosition() {
 	params.Set("STEP_SIZE", "1")
 	params.Set("CSV_FORMAT", "YES")
 	params.Set("QUANTITIES", "31")
+
+	chart := Chart{
+		Name: person.Name,
+		Ascendant: Placement{
+			Sign: ascSign,
+			Degree: ascDeg,
+		},
+		Planets: map[string]Placement{},
+	}
+
 
 	for _, planet := range Planets {
 		params.Set("COMMAND", planet.Id)
@@ -112,8 +122,14 @@ func (person Person) GetPlanetryPosition() {
 
 		lon := parseEclipticLongitude(apiResp.Result)
 		sign, degree := eclipticToZodiac(lon)
+		chart.Planets[planet.Name] = Placement{
+			Sign: sign,
+			Degree: degree,
+		}
 		fmt.Printf("%s %s %.1f\n", planet.Name, sign, degree)
 	}
+
+	return chart
 }
 
 func parseEclipticLongitude(result string) float64 {

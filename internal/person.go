@@ -1,15 +1,15 @@
 package internal
 
 type Person struct {
-	Name     string
-	Year     int
-	Month    int
-	Day      int
-	Hour     int
-	Minute   int
-	Second   int
-	Lat      float64
-	Lon      float64
-	TZOffset int
+	Name     string		`json:"name"`
+	Year     int		`json:"year"`
+	Month    int		`json:"month"`
+	Day      int		`json:"day"`
+	Hour     int		`json:"hour"`
+	Minute   int		`json:"minute"`
+	Second   int		`json:"second"`
+	Lat      float64	`json:"lat"`
+	Lon      float64	`json:"lon"`
+	TZOffset int		`json:"tzoffset"`
 }
 

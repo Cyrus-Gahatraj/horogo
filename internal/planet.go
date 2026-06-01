@@ -5,6 +5,18 @@ type Planet struct {
 	Id   string
 }
 
+type Placement struct {
+    Sign   string  `json:"sign"`
+    Degree float64 `json:"degree"`
+}
+
+type Chart struct {
+    Name string 					`json:"name"`
+	Place string					`json:"place"`
+    Ascendant Placement 			`json:"ascendant"`
+    Planets map[string]Placement 	`json:"planets"`
+}
+
 var Planets = []Planet{
 	{"Sun", "10"},
 	{"Moon", "301"},

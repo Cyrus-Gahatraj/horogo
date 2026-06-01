@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -92,7 +93,29 @@ func runCmd(cmd *cobra.Command, args []string) {
 		TZOffset: tzOffset,
 	}
 
-	person.GetPlanetryPosition()
+	chart := person.GetPlanetryPosition()
+	chart.Place = place
+
+	outputDir := "raw"
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
+		os.Mkdir(outputDir, os.ModePerm)
+	}
+
+	nameDir := outputDir + "/" + name
+	if _, err := os.Stat(nameDir); os.IsNotExist(err) {
+		os.MkdirAll(nameDir, os.ModePerm)
+	}
+
+	byte, err := json.MarshalIndent(chart, "", " ")
+	if err != nil {
+		panic(err)
+	}
+
+	wholePath := nameDir + "/" + "chart.json"
+	err = os.WriteFile(wholePath, byte, 0644)
+	if err != nil {
+		panic(err)
+	}
 }
 
 var rootCmd = &cobra.Command{
