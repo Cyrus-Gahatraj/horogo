@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -17,7 +18,18 @@ const dataDir = "data"
 
 func getInput(prompt string) string {
 	fmt.Print(prompt)
-	val, _ := reader.ReadString('\n')
+	val, err := reader.ReadString('\n')
+	if err != nil {
+		if err == io.EOF {
+			trimmed := strings.TrimSpace(val)
+			if trimmed != "" {
+				return trimmed
+			}
+			fmt.Println("\nGoodbye!")
+			os.Exit(0)
+		}
+		return ""
+	}
 	return strings.TrimSpace(val)
 }
 
@@ -118,8 +130,9 @@ func runCmd(cmd *cobra.Command, args []string) {
 	}
 
 	nameDir := outputDir + "/" + name
-	if _, err := os.Stat(nameDir); os.IsNotExist(err) {
-		os.MkdirAll(nameDir, os.ModePerm)
+	rawDir := nameDir + "/raw"
+	if _, err := os.Stat(rawDir); os.IsNotExist(err) {
+		os.MkdirAll(rawDir, os.ModePerm)
 	}
 
 	byte, err := json.MarshalIndent(chart, "", " ")
@@ -127,7 +140,7 @@ func runCmd(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
-	wholePath := nameDir + "/" + "chart.json"
+	wholePath := rawDir + "/" + "chart.json"
 	err = os.WriteFile(wholePath, byte, 0644)
 	if err != nil {
 		panic(err)
@@ -176,21 +189,50 @@ func runAskCmd(cmd *cobra.Command, args []string) {
 		selectedProfile = profiles[choice-1]
 	}
 
-	chartPath := fmt.Sprintf("%s/%s/chart.json", dataDir, selectedProfile)
+	chartPath := fmt.Sprintf("%s/%s/raw/chart.json", dataDir, selectedProfile)
 	chartBytes, err := os.ReadFile(chartPath)
 	if err != nil {
-		fmt.Printf("Profile configuration error: Could not read file at %s\n", chartPath)
-		return
+		// Fallback to legacy path for backward compatibility
+		legacyPath := fmt.Sprintf("%s/%s/chart.json", dataDir, selectedProfile)
+		var legacyErr error
+		chartBytes, legacyErr = os.ReadFile(legacyPath)
+		if legacyErr != nil {
+			fmt.Printf("Profile configuration error: Could not read file at %s or %s\n", chartPath, legacyPath)
+			return
+		}
 	}
 
 	fmt.Printf("\nLoaded chart context for: %s\n", selectedProfile)
-	userPrompt := getInput("Ask a question about this chart: ")
-	if userPrompt == "" {
-		userPrompt = "Provide an overall basic astrological parsing for this profile."
-	}
 
-	fmt.Println("\n--- Querying Ollama ---")
-	internal.Ask(userPrompt, string(chartBytes))
+	fmt.Println(`Commands:
+  help or /help    show this help
+  exit or /exit    exit the session
+`)
+
+	for {
+		userPrompt := getInput("\nAsk a question about this chart: ")
+		cleanPrompt := strings.ToLower(strings.TrimSpace(userPrompt))
+		if cleanPrompt == "" {
+			continue
+		}
+		if cleanPrompt == "/exit" || cleanPrompt == "\\exit" || cleanPrompt == "exit" {
+			fmt.Println("Goodbye!")
+			break
+		}
+		if cleanPrompt == "/help" || cleanPrompt == "\\help" || cleanPrompt == "help" {
+			fmt.Println(`Commands:
+  help or /help    show this help
+  exit or /exit    exit the session`)
+			continue
+		}
+
+		err := internal.Ask(userPrompt, string(chartBytes))
+		if err != nil {
+			fmt.Printf("\nError: %v\n", err)
+			continue
+		}
+		fmt.Println()
+	}
 }
 
 var rootCmd = &cobra.Command{

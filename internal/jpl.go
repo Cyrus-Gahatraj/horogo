@@ -75,7 +75,24 @@ func (person Person) GetPlanetryPosition() Chart {
 	ramcDeg := math.Mod(gmstDeg+person.Lon, 360)
 	ascLon := ascendant(ramcDeg, person.Lat)
 	ascSign, ascDeg := eclipticToZodiac(ascLon)
+	ascNak, ascPada := calcNakshatra(ascLon)
 	fmt.Printf("Asc %s %.1f\n", ascSign, ascDeg)
+
+	chart := Chart{
+		Name: person.Name,
+		Ascendant: Placement{
+			Sign:      ascSign,
+			Degree:    ascDeg,
+			House:     1,
+			Nakshatra: ascNak,
+			Pada:      ascPada,
+		},
+		Planets: map[string]Placement{},
+	}
+	for i := range chart.Houses {
+		cuspLon := math.Mod(ascLon+float64(i)*30, 360)
+		chart.Houses[i] = cuspLon
+	}
 
 	startTime := utcTime
 	endTime := startTime.Add(time.Hour)
@@ -87,16 +104,6 @@ func (person Person) GetPlanetryPosition() Chart {
 	params.Set("STEP_SIZE", "1")
 	params.Set("CSV_FORMAT", "YES")
 	params.Set("QUANTITIES", "31")
-
-	chart := Chart{
-		Name: person.Name,
-		Ascendant: Placement{
-			Sign: ascSign,
-			Degree: ascDeg,
-		},
-		Planets: map[string]Placement{},
-	}
-
 
 	for _, planet := range Planets {
 		params.Set("COMMAND", planet.Id)
@@ -122,9 +129,14 @@ func (person Person) GetPlanetryPosition() Chart {
 
 		lon := parseEclipticLongitude(apiResp.Result)
 		sign, degree := eclipticToZodiac(lon)
+		house := calcHouse(lon, ascLon)
+		nak, pada := calcNakshatra(lon)
 		chart.Planets[planet.Name] = Placement{
-			Sign: sign,
-			Degree: degree,
+			Sign:      sign,
+			Degree:    degree,
+			House:     house,
+			Nakshatra: nak,
+			Pada:      pada,
 		}
 		fmt.Printf("%s %s %.1f\n", planet.Name, sign, degree)
 	}
