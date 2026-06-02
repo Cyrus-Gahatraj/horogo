@@ -54,58 +54,76 @@ func runCmd(cmd *cobra.Command, args []string) {
 		name = "User"
 	}
 
-	dob := getInput("Your DOB (format: yyyy-mm-dd): ")
-	splitDOB := strings.Split(dob, "-")
-	if len(splitDOB) != 3 {
-		fmt.Println("Invalid date format, expected yyyy-mm-dd")
-		os.Exit(1)
-	}
-	year, err := strconv.Atoi(splitDOB[0])
-	if err != nil {
-		fmt.Println("Invalid year:", splitDOB[0])
-		os.Exit(1)
-	}
-	month, err := strconv.Atoi(splitDOB[1])
-	if err != nil {
-		fmt.Println("Invalid month:", splitDOB[1])
-		os.Exit(1)
-	}
-	day, err := strconv.Atoi(splitDOB[2])
-	if err != nil {
-		fmt.Println("Invalid day:", splitDOB[2])
-		os.Exit(1)
+	var gender string
+	for {
+		genderInput := strings.ToLower(strings.TrimSpace(getInput("Your gender (M/F): ")))
+		if genderInput == "m" {
+			gender = "male"
+			break
+		}
+		if genderInput == "f" {
+			gender = "female"
+			break
+		}
+		fmt.Println("Wrong value, please try again.")
 	}
 
-	tob := getInput("Your birth time (format: HH:MM, 24-hour): ")
-	splitTOB := strings.Split(tob, ":")
-	if len(splitTOB) != 2 {
-		fmt.Println("Invalid time format, expected HH:MM")
-		os.Exit(1)
-	}
-	hour, err := strconv.Atoi(splitTOB[0])
-	if err != nil || hour < 0 || hour > 23 {
-		fmt.Println("Invalid hour:", splitTOB[0])
-		os.Exit(1)
-	}
-	minute, err := strconv.Atoi(splitTOB[1])
-	if err != nil || minute < 0 || minute > 59 {
-		fmt.Println("Invalid minute:", splitTOB[1])
-		os.Exit(1)
+	var year, month, day int
+	for {
+		dob := getInput("Your DOB (format: yyyy-mm-dd): ")
+		splitDOB := strings.Split(dob, "-")
+		if len(splitDOB) != 3 {
+			fmt.Println("Wrong value, please try again.")
+			continue
+		}
+		y, err1 := strconv.Atoi(splitDOB[0])
+		m, err2 := strconv.Atoi(splitDOB[1])
+		d, err3 := strconv.Atoi(splitDOB[2])
+		if err1 != nil || err2 != nil || err3 != nil || m < 1 || m > 12 || d < 1 || d > 31 {
+			fmt.Println("Wrong value, please try again.")
+			continue
+		}
+		year, month, day = y, m, d
+		break
 	}
 
-	place := getInput("Your birth place (format: city, country): ")
-
-	lat, lon, err := internal.GeocodePlace(place)
-	if err != nil {
-		fmt.Println("Geocoding failed:", err)
-		os.Exit(1)
+	var hour, minute int
+	for {
+		tob := getInput("Your birth time (format: HH:MM, 24-hour): ")
+		splitTOB := strings.Split(tob, ":")
+		if len(splitTOB) != 2 {
+			fmt.Println("Wrong value, please try again.")
+			continue
+		}
+		h, err1 := strconv.Atoi(splitTOB[0])
+		m, err2 := strconv.Atoi(splitTOB[1])
+		if err1 != nil || err2 != nil || h < 0 || h > 23 || m < 0 || m > 59 {
+			fmt.Println("Wrong value, please try again.")
+			continue
+		}
+		hour, minute = h, m
+		break
 	}
-	fmt.Printf("Location: %.2f°N, %.2f°E\n", lat, lon)
 
-	tzOffset, err := internal.GetTimezoneOffset(lat, lon)
-	if err != nil {
-		fmt.Println("Timezone lookup failed:", err)
-		os.Exit(1)
+	var place string
+	var lat, lon float64
+	var tzOffset int
+	for {
+		place = getInput("Your birth place (format: city, country): ")
+		var err error
+		lat, lon, err = internal.GeocodePlace(place)
+		if err != nil {
+			fmt.Println("Wrong value, please try again.")
+			continue
+		}
+		fmt.Printf("Location: %.2f°N, %.2f°E\n", lat, lon)
+
+		tzOffset, err = internal.GetTimezoneOffset(lat, lon)
+		if err != nil {
+			fmt.Println("Timezone lookup failed:", err)
+			continue
+		}
+		break
 	}
 
 	person := internal.Person{
@@ -123,6 +141,7 @@ func runCmd(cmd *cobra.Command, args []string) {
 
 	chart := person.GetPlanetryPosition()
 	chart.Place = place
+	chart.Gender = gender
 
 	outputDir := dataDir
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
@@ -145,6 +164,10 @@ func runCmd(cmd *cobra.Command, args []string) {
 	if err != nil {
 		panic(err)
 	}
+
+	// Generate the wiki files by calling the server
+	fmt.Println("\nGenerating your personalized astrology wiki... (this may take a minute)")
+	generateWiki(name, place, string(byte))
 }
 
 func runLsCmd(cmd *cobra.Command, args []string) {
@@ -226,6 +249,18 @@ func runAskCmd(cmd *cobra.Command, args []string) {
 			continue
 		}
 
+		// Check if we can answer from the local wiki first!
+		matchedWikiFile := matchWikiCategory(cleanPrompt)
+		if matchedWikiFile != "" {
+			wikiPath := fmt.Sprintf("%s/%s/wiki/%s", dataDir, selectedProfile, matchedWikiFile)
+			content, err := os.ReadFile(wikiPath)
+			if err == nil {
+				fmt.Printf("\n[Reading from local Wiki: %s]\n\n", matchedWikiFile)
+				fmt.Println(string(content))
+				continue
+			}
+		}
+
 		err := internal.Ask(userPrompt, string(chartBytes))
 		if err != nil {
 			fmt.Printf("\nError: %v\n", err)
@@ -263,5 +298,147 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
+	}
+}
+
+func matchWikiCategory(prompt string) string {
+	// Personality keywords
+	personalityKeywords := []string{
+		"personality", "ascendant", "lagna", "myself", "who am i",
+		"temperament", "behavior", "krittika", "nakshatra", "constitution",
+	}
+	for _, kw := range personalityKeywords {
+		if strings.Contains(prompt, kw) {
+			return "ascendant_personality.md"
+		}
+	}
+
+	// Planets and houses keywords
+	planetKeywords := []string{
+		"sun", "moon", "mars", "mercury", "jupiter", "saturn",
+		"venus", "uranus", "neptune", "pluto", "house", "degree",
+		"placement", "aspect", "conjunction",
+	}
+	for _, kw := range planetKeywords {
+		if strings.Contains(prompt, kw) {
+			return "planets_houses.md"
+		}
+	}
+
+	// Career and wealth keywords
+	careerKeywords := []string{
+		"career", "job", "work", "wealth", "money", "finance",
+		"profession", "business", "occupation", "earning", "rich",
+	}
+	for _, kw := range careerKeywords {
+		if strings.Contains(prompt, kw) {
+			return "career_wealth.md"
+		}
+	}
+
+	// Relationships and spirituality keywords
+	relKeywords := []string{
+		"relationship", "love", "marriage", "spouse", "partner",
+		"wife", "husband", "spirituality", "growth", "inner",
+		"occult", "mystic", "meditation", "god", "soul",
+	}
+	for _, kw := range relKeywords {
+		if strings.Contains(prompt, kw) {
+			return "relationships_spirituality.md"
+		}
+	}
+
+	return ""
+}
+
+func generateWiki(name, place, chartData string) {
+	nameDir := dataDir + "/" + name
+	wikiDir := nameDir + "/wiki"
+	os.MkdirAll(wikiDir, os.ModePerm)
+
+	// Topics to generate
+	topics := []struct {
+		filename string
+		title    string
+		prompt   string
+	}{
+		{
+			filename: "ascendant_personality.md",
+			title:    "Ascendant & Personality Profile",
+			prompt:   "Write a detailed, professional analysis of my Ascendant (Lagna) and its Nakshatra based on my chart. Include how the Ascendant sign and Nakshatra shape my core personality, physical traits, and general life outlook. Keep it narrative and insightful, without raw degrees/coordinates tables.",
+		},
+		{
+			filename: "planets_houses.md",
+			title:    "Planetary Placements & Houses",
+			prompt:   "Write a comprehensive breakdown of all the planetary placements in my chart. Detail what each planet represents and how it manifests in its specific zodiac sign and house. Highlight any conjunctions or key relationships between planets. Keep it narrative and insightful, without raw degrees/coordinates tables.",
+		},
+		{
+			filename: "career_wealth.md",
+			title:    "Career & Wealth Profile",
+			prompt:   "Analyze my professional inclinations, career strengths, and financial growth patterns based on my chart. Focus on the houses and planets related to work, daily service, intellect, and assets. Highlight the best industries or roles and provide a long-term career outlook. Keep it narrative and insightful, without raw degrees/coordinates tables.",
+		},
+		{
+			filename: "relationships_spirituality.md",
+			title:    "Relationships & Spirituality",
+			prompt:   "Analyze my relationship patterns, partnership potential, and spiritual or inner growth markers based on my chart. Focus on the 7th house, the Moon, and spiritual/outer planets. Describe what I seek in relationships, how I process emotions, and my spiritual potential. Keep it narrative and insightful, without raw degrees/coordinates tables.",
+		},
+	}
+
+	for _, t := range topics {
+		fmt.Printf("- Generating %s... ", t.title)
+		resp, err := internal.AskSilent(t.prompt, chartData)
+		if err != nil {
+			fmt.Printf("failed: %v\n", err)
+			continue
+		}
+		
+		content := fmt.Sprintf("# %s: %s\n\n%s\n", t.title, name, resp)
+		err = os.WriteFile(wikiDir+"/"+t.filename, []byte(content), 0644)
+		if err != nil {
+			fmt.Printf("failed writing: %v\n", err)
+			continue
+		}
+		fmt.Println("done.")
+	}
+
+	// Generate index.md
+	fmt.Print("- Generating index.md... ")
+	indexContent := fmt.Sprintf(`# Astrological Wiki: %[1]s
+
+Welcome to your personalized astrological wiki. This system compiles and analyzes the data of your birth chart to provide structured insights into your personality, career, relationships, and spiritual path.
+
+---
+
+## 🌌 Natal Chart Summary (At a Glance)
+*   **Name:** %[1]s
+*   **Birth Place:** %[2]s
+
+---
+
+## 📚 Wiki Sections
+
+Click on the sections below to read detailed analyses:
+
+1.  **[Ascendant & Personality Profile](wiki/ascendant_personality.md)**
+    *   *Lagna, Nakshatras, and core constitution.*
+2.  **[Planetary Placements & Houses](wiki/planets_houses.md)**
+    *   *Every planet's placement and sign manifestation.*
+3.  **[Career & Wealth Profile](wiki/career_wealth.md)**
+    *   *Professional strengths and financial outlook.*
+4.  **[Relationships & Spirituality](wiki/relationships_spirituality.md)**
+    *   *Interpersonal patterns and inner growth.*
+
+---
+
+## 🗺️ Raw Chart Data
+The mathematical computations of your planetary positions are stored in:
+*   [chart.json](raw/chart.json)
+`, name, place)
+
+	err := os.WriteFile(nameDir+"/index.md", []byte(indexContent), 0644)
+	if err != nil {
+		fmt.Printf("failed writing index.md: %v\n", err)
+	} else {
+		fmt.Println("done.")
 	}
 }

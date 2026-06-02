@@ -55,3 +55,39 @@ func Ask(prompt string, chartData string) error {
 
 	return nil
 }
+
+// AskSilent sends the prompt to the AI server and returns the response as a string
+func AskSilent(prompt string, chartData string) (string, error) {
+	serverURL := os.Getenv("AI_SERVER_URL")
+	if serverURL == "" {
+		serverURL = defaultServerURL
+	}
+
+	body := map[string]string{
+		"prompt":     prompt,
+		"chart_data": chartData,
+	}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("marshal request: %w", err)
+	}
+
+	resp, err := http.Post(serverURL+"/ask", "application/json", bytes.NewReader(jsonBody))
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("server error (%d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+
+	return buf.String(), nil
+}

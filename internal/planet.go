@@ -15,6 +15,7 @@ type Placement struct {
 
 type Chart struct {
 	Name      string               `json:"name"`
+	Gender    string               `json:"gender"`
 	Place     string               `json:"place"`
 	Ascendant Placement            `json:"ascendant"`
 	Houses    [12]float64          `json:"houses"`

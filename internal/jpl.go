@@ -141,6 +141,43 @@ func (person Person) GetPlanetryPosition() Chart {
 		fmt.Printf("%s %s %.1f\n", planet.Name, sign, degree)
 	}
 
+	// Calculate Rahu (Mean Ascending Node)
+	t := (jd - 2451545.0) / 36525.0
+	rahuLon := 259.183275 - 1934.1420*t + 0.002078*t*t + 0.0000022*t*t*t
+	rahuLon = math.Mod(rahuLon, 360.0)
+	if rahuLon < 0 {
+		rahuLon += 360.0
+	}
+
+	// Calculate Ketu (Mean Descending Node)
+	ketuLon := math.Mod(rahuLon+180.0, 360.0)
+
+	// Add Rahu to chart
+	rahuSign, rahuDeg := eclipticToZodiac(rahuLon)
+	rahuHouse := calcHouse(rahuLon, ascLon)
+	rahuNak, rahuPada := calcNakshatra(rahuLon)
+	chart.Planets["Rahu"] = Placement{
+		Sign:      rahuSign,
+		Degree:    rahuDeg,
+		House:     rahuHouse,
+		Nakshatra: rahuNak,
+		Pada:      rahuPada,
+	}
+	fmt.Printf("Rahu %s %.1f\n", rahuSign, rahuDeg)
+
+	// Add Ketu to chart
+	ketuSign, ketuDeg := eclipticToZodiac(ketuLon)
+	ketuHouse := calcHouse(ketuLon, ascLon)
+	ketuNak, ketuPada := calcNakshatra(ketuLon)
+	chart.Planets["Ketu"] = Placement{
+		Sign:      ketuSign,
+		Degree:    ketuDeg,
+		House:     ketuHouse,
+		Nakshatra: ketuNak,
+		Pada:      ketuPada,
+	}
+	fmt.Printf("Ketu %s %.1f\n", ketuSign, ketuDeg)
+
 	return chart
 }
 
