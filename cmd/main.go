@@ -13,11 +13,27 @@ import (
 )
 
 var reader = bufio.NewReader(os.Stdin)
+const dataDir = "data"
 
 func getInput(prompt string) string {
 	fmt.Print(prompt)
 	val, _ := reader.ReadString('\n')
 	return strings.TrimSpace(val)
+}
+
+func getProfiles() ([]string, error) {
+	files, err := os.ReadDir(dataDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var profiles []string
+	for _, file := range files {
+		if file.IsDir() {
+			profiles = append(profiles, file.Name())
+		}
+	}
+	return profiles, nil
 }
 
 func runCmd(cmd *cobra.Command, args []string) {
@@ -96,7 +112,7 @@ func runCmd(cmd *cobra.Command, args []string) {
 	chart := person.GetPlanetryPosition()
 	chart.Place = place
 
-	outputDir := "raw"
+	outputDir := dataDir
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		os.Mkdir(outputDir, os.ModePerm)
 	}
@@ -118,11 +134,87 @@ func runCmd(cmd *cobra.Command, args []string) {
 	}
 }
 
+func runLsCmd(cmd *cobra.Command, args []string) {
+	profiles, err := getProfiles()
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("Total profiles found: 0 (data directory does not exist)")
+			return
+		}
+		panic(err)
+	}
+
+	fmt.Printf("Total profiles found: %d\n", len(profiles))
+	for _, p := range profiles {
+		fmt.Printf("- %s\n", p)
+	}
+}
+
+func runAskCmd(cmd *cobra.Command, args []string) {
+	var selectedProfile string
+
+	if len(args) > 0 {
+		selectedProfile = args[0]
+	} else {
+		profiles, err := getProfiles()
+		if err != nil || len(profiles) == 0 {
+			fmt.Println("No profiles available to analyze.")
+			return
+		}
+
+		fmt.Println("Available Profiles:")
+		for i, profile := range profiles {
+			fmt.Printf("[%d] %s\n", i+1, profile)
+		}
+
+		choiceStr := getInput("Select a profile number: ")
+		choice, err := strconv.Atoi(choiceStr)
+		if err != nil || choice < 1 || choice > len(profiles) {
+			fmt.Println("Invalid profile selection.")
+			return
+		}
+		selectedProfile = profiles[choice-1]
+	}
+
+	chartPath := fmt.Sprintf("%s/%s/chart.json", dataDir, selectedProfile)
+	chartBytes, err := os.ReadFile(chartPath)
+	if err != nil {
+		fmt.Printf("Profile configuration error: Could not read file at %s\n", chartPath)
+		return
+	}
+
+	fmt.Printf("\nLoaded chart context for: %s\n", selectedProfile)
+	userPrompt := getInput("Ask a question about this chart: ")
+	if userPrompt == "" {
+		userPrompt = "Provide an overall basic astrological parsing for this profile."
+	}
+
+	fmt.Println("\n--- Querying Ollama ---")
+	internal.Ask(userPrompt, string(chartBytes))
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "horogo",
 	Short: "Analyze birth chart from CLI",
 	Long:  `Horogo is a CLI tool for analyzing birth charts.`,
 	Run:   runCmd,
+}
+
+var lsCmd = &cobra.Command{
+	Use:   "ls",
+	Short: "List total profile structures inside data folder",
+	Run:   runLsCmd,
+}
+
+var askCmd = &cobra.Command{
+	Use:   "ask [name]",
+	Short: "Query internal models regarding generated chart data profiles",
+	Run:   runAskCmd,
+}
+
+func init() {
+	rootCmd.AddCommand(lsCmd)
+	rootCmd.AddCommand(askCmd)
 }
 
 func main() {
